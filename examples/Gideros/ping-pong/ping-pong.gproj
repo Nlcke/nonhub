@@ -1,0 +1,8 @@
+<project>
+ <properties version="1.0" windowHeight="0" scaleMode="2" mouseToTouch="1" winrt_package="com.yourdomain.yourapp" mouseTouchOrder="0" orientation="0" autorotation="0" iosDevice="0" win_org="GiderosMobile" win_domain="giderosmobile.com" android_template="0" packageName="com.yourdomain.yourapp" osx_category="5" osx_org="GiderosMobile" osx_bundle="com.yourdomain." encryptAssets="0" retinaDisplay="0" ios_bundle="com.yourdomain." encryptCode="0" touchToMouse="1" osx_domain="giderosmobile.com" logicalWidth="320" winrt_org="GiderosMobile" architecture="0" logicalHeight="480" windowWidth="0" html5_host="" version_code="1" assetsOnly="0" fps="60">
+  <imageScales/>
+ </properties>
+ <file source="cfg.lua"/>
+ <file source="Nonhub.lua"/>
+ <file source="main.lua"/>
+</project>

@@ -1,0 +1,20 @@
+{
+  "name": "nonhub",
+  "version": "1.0.0",
+  "description": "multiplayer framework for Lua clients",
+  "main": "nonhub.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/nlcke/nonhub.git"
+  },
+  "keywords": [
+    "multiplayer",
+    "lua",
+    "framework"
+  ],
+  "author": "Nikolay Yevstakhov aka N1cke <nikolay.yevstakhov@gmail.com> (https://github.com/Nlcke)",
+  "license": "MIT"
+}

@@ -1,0 +1,10 @@
+function init(self)
+	nonhub = require "nonhub"
+	require "cfg"
+	client = nonhub.new {}
+	client.connect()
+end
+
+function update(self, dt)
+    client.receive()
+end
