@@ -1,6 +1,6 @@
 {
   "name": "nonhub",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "multiplayer framework for Lua clients",
   "main": "nonhub.js",
   "scripts": {
