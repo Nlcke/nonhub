@@ -146,6 +146,7 @@ Use networking methods of the client:
 * disconnect()
 * send[mode] = msg
 * receive()
+
 ### nonhub.new(options)
 After you required `nonhub.lua` module you need to create a client (or multiple clients for local testing). This function accepts only one argument called _options_ which must be a table. Nonhub loads client configuration from `cfg.lua` first and then updates it from this options table. Therefore you can use the options to redefine any key from `cfg.lua`. For example:
 ```lua
@@ -475,7 +476,7 @@ errors: {
 }
 ```
 ### level
-Restricts access to the mode. Currently 3 levels supported:
+Restricts access to the mode. Currently 4 levels supported:
 * __0__ (_unauthorized singlecast_) — any client can use this mode even ones without assigned __id__ (i.e. id == 0) and result will be sent back to the client. 
 * __1__ (_authorized singlecast_) — only clients with assigned __id__ (i.e. id > 0) can use this mode and result will be sent back to the client.
 * __2__ (_reliable broadcast_) — only clients with assigned __id__ (i.e. id > 0) can use this mode and result will be sent as a TCP packet to all clients from the __client.group__ defined in `handler`.
