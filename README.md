@@ -5,9 +5,10 @@ Nonhub is a free opensource multiplayer framework for Lua clients. Nonhub made-u
 * Easy to use
 * High performance
 * Fully customizable via modes
+* Optional UDP for fast paced games
 * Developer-friendly
 * On-the-fly server patching
-* Heroku support
+* Heroku PaaS support
 
 ## Table of Contents
 * [Local installation](#local-installation)
@@ -52,7 +53,7 @@ To write and debug Nonhub modes you can use [Visual Studio Code](https://code.vi
 Congratulations, your server is working! Isn't that awesome? :sunglasses:
 
 ## <a name="deployment-to-heroku">Deployment to Heroku</a>
-You can run Nonhub server on the Heroku platform for free but beware about main limitation of the free plan: all apps must sleep (i.e. they will be disabled) 6 hours in a 24 hour period. Also Heroku conceptually has no persistent file storage and you need to use an addon like Heroku Postgres for this. So let's start.
+You can run Nonhub server on the Heroku platform for free but beware about main limitation of the free plan: all apps must sleep (i.e. they will be disabled) 6 hours in a 24 hour period. Also Heroku conceptually has no persistent file storage and you need to use an addon like Heroku Postgres for this. And no UDP thus you need to set `settings.json/UDP` key to __false__. So let's start.
 
 1) Register [Heroku account](https://signup.heroku.com/signup/dc).
 2) Intall [Heroku Toolbelt](https://toolbelt.heroku.com/).
@@ -236,6 +237,7 @@ luamodules = {},
 maxMessageLength = 65535,
 maxModeIndex = 5,
 maxRetries = 5,
+maxUDPPackets = 60,
 modeErrors = {},
 modeIndexes = {},
 modeLevels = {},
@@ -271,6 +273,8 @@ This key must always have same value as `settings.json/maxMessageLength` key. It
 When received message mode index is higher than this value received message will be treated as error message.
 #### maxRetries
 When `settings.json/maxConnections` is too high and server overloaded by requests a client cannot always send a message. In this case client caches last unsent message and automatically tries to send it again increasing `retries` counter after each failure. When `retries` exceeds `maxRetries` the client disconnects with __timeout__ error.
+#### maxUDPPackets
+This key defines the number of UDP packets your client will be able to receive per each `client.receive()` call. Since each client sends same number of packets per second you can set this key to the maximum size of the 'game room' i.e. maximum number of players in the broadcasting group. This must be an integer number higher than 0 (otherwise UDP receiving will be disabled). 
 #### modeErrors
 Table with error descriptions for each mode. They will be passed to `onError` callbacks as first argument. 
 #### modeIndexes
@@ -326,6 +330,7 @@ Configuration file for the server. Modes can add their own settings here. Withou
         "./modes/"
     ],
     "serverHandshake": "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n\r\n",
+    "UDP": null,
     "version": "1.0.0"
 }
 ```
@@ -346,6 +351,11 @@ This parameter defines max size of each message received by the server. When cli
 When server starts it tries to load modes from this paths in the array order. You can use as many paths as you want but beware: if some modes have same name only last one will be used. 
 #### serverHandshake
 This can be used when trying a PaaS other than Heroku. Some platforms work only with certain Websocket libs and thus cannot be used for Nonhub e.g. OpenShift Online. 
+#### UDP
+Can have one of the following values:
+* null — server will use UDP for modes with level 3 and TCP for modes with level 2
+* true — server will use UDP for all modes with level 2 and 3
+* false — server will use TCP for all modes and it will not bind UDP socket
 #### version
 This key used to control server and client updates. When you update your Nonhub server you need to adjust this key so client will see that it needs an update too (client has it's own `cfg.lua/version` key). Can be any string allowed for HTML requests. For example:
 ```json
@@ -466,9 +476,11 @@ errors: {
 ```
 ### level
 Restricts access to the mode. Currently 3 levels supported:
-* __0__ (_unauthorized_) — any client can use this mode even ones without assigned __id__ (i.e. id == 0) and result will be sent back to the client. 
-* __1__ (_authorized_) — only clients with assigned __id__ (i.e. id > 0) can use this mode and result will be sent back to the client.
-* __2__ (_broadcast_) — only clients with assigned __id__ (i.e. id > 0) can use this mode and result will be sent to all clients from the __client.group__ defined in `handler`.
+* __0__ (_unauthorized singlecast_) — any client can use this mode even ones without assigned __id__ (i.e. id == 0) and result will be sent back to the client. 
+* __1__ (_authorized singlecast_) — only clients with assigned __id__ (i.e. id > 0) can use this mode and result will be sent back to the client.
+* __2__ (_reliable broadcast_) — only clients with assigned __id__ (i.e. id > 0) can use this mode and result will be sent as a TCP packet to all clients from the __client.group__ defined in `handler`.
+* __3__ (_unreliable broadcast_) — only clients with assigned __id__ (i.e. id > 0) can use this mode and result will be sent as a UDP packet to all clients from the __client.group__ defined in `handler`.
+
 
 ## <a name = "acknowledgments">_Acknowledgments_</a>
 I would like to offer my special thanks to my best friend, Kostya Krivulya aka Bones, for supporting me all this time and for his valuable advices.

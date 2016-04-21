@@ -1,5 +1,5 @@
 /*
- * Nonhub server loader v1.0.0
+ * Nonhub server loader v1.1.0
  * Author: Nikolay Yevstakhov aka N1cke
  * License: MIT
  */
@@ -261,5 +261,13 @@ let server = function() { // creates server object and updates settings and cfg
     return server
 }()
 
+if (server.debug) console.log("[settings.json]\n", settings)
+
 server.network = require('net').createServer(server.onConnection)
 server.network.listen(server.port, server.onListen)
+
+server.udpnetwork = require('dgram').createSocket('udp4')
+server.udpnetwork.on('message', server.onUDPMessage)
+server.udpnetwork.on('listening', server.onUDPListen)
+if (server.UDP !== false)
+    server.udpnetwork.bind({ address: "localhost", port: server.port})

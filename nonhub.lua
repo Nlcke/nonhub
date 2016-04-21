@@ -20,6 +20,7 @@ nonhub.defaults = { -- must be in 'cfg' or 'new' ('new' rewrites 'cfg')
 	maxMessageLength = "number"   , -- 0 — 65535
 	maxModeIndex     = "number"   , -- 0 — 254; 255 is for errors
 	maxRetries       = "number"   , -- attempts to resend a message
+	maxUDPPackets    = "number"   , -- max number of players in a game room
 	modeLevels       = "table"    , -- {index = level, ...}
 	modeNames        = "table"    , -- {index = name, ...}
 	modeIndexes      = "table"    , -- {name = index, ...}
@@ -48,6 +49,7 @@ nonhub.internals = [[
 	client.buffer
 	client.retries
 	client.cache
+	client.udpsocket
 ]]
 
 nonhub.onDisconnectSources = [[
@@ -115,14 +117,20 @@ function nonhub.new(options)
 		error("Missing Nonhub modes:\n• "..table.concat(missing, "\n• "), 2)
 	end
 	
+	local udp = false
+	for i = 0, #self.modeLevels do
+		if self.modeLevels[i] == 3 then udp = true; break end
+	end
+	if not udp then self.maxUDPPackets = 0 end
+	
 	self.connect = function()
 		if self.isConnected then return end
 
-		local socket, err = socket.tcp()
+		local tcpsocket, err = socket.tcp()
 		if err then return self.disconnect("create socket", err) end
-		socket:settimeout(self.timeout)
-		socket:setoption('tcp-nodelay', true)
-		self.socket = socket
+		tcpsocket:settimeout(self.timeout)
+		tcpsocket:setoption('tcp-nodelay', true)
+		self.socket = tcpsocket
 
 		local ok, err = self.socket:connect(self.address, self.port)
 		if err then return self.disconnect("connect", err) end
@@ -143,22 +151,40 @@ function nonhub.new(options)
 		
 		if self.debug then print("\n[connect] serverHS:\n"..serverHS) end
 		
-		if serverHS:match "Protocol: Error"
-		then return self.disconnect("connect", "version mismatch") end
-		
+		if self.maxUDPPackets > 0 then
+			if serverHS:match "Protocol: Error"
+			then return self.disconnect("connect", "version mismatch") end
+
+			local udpsocket, err = socket.udp()
+			if err then return self.disconnect("create socket", err) end
+
+			local ok, err = udpsocket:setpeername(self.address, self.port)
+			if err then return self.disconnect("connect", err) end
+			
+			local udpkey = serverHS:match "UDPKey: (.*)\r\n"
+			udpsocket:settimeout(self.timeout)
+			
+			local ok, err = udpsocket:send(udpkey)
+			if err then return self.disconnect("connect", err) end
+			
+			udpsocket:settimeout(0)
+			self.udpsocket = udpsocket
+		end
+
 		self.isConnected = true
 		self.buffer = ''
 		self.retries = 0
 		self.cache = nil
 		self.socket:settimeout(0)
 		self.lastMessageTime = os.time()
-		
+	
 		self.onConnect(clientHS, serverHS)
 	end
 	
 	self.disconnect = function(src, err)
 		self.isConnected = false
 		if self.socket then self.socket:close(); self.socket = nil end
+		if self.udpsocket then self.udpsocket:close(); self.udpsocket = nil end
 		if self.debug then print("[disconnect]", src, ":", err) end
 		self.onDisconnect(src, err)
 	end
@@ -179,29 +205,29 @@ function nonhub.new(options)
 		local encodedLength = string.char(math.floor(l / 256), l % 256)
 		local data = (encodedMode .. encodedLength) .. encodedMessage
 		
-		local bytes, err, pos = self.socket:send(data)
-		if err == "closed" then self.disconnect("send message", err)
-		elseif err == "timeout" then self.cache = data
-		else self.cache = nil; self.retries = 0 end
+		if self.modeLevels[self.modeIndexes[mode]] == 3 then
+			self.udpsocket:send(data)
+		else
+			local bytes, err, pos = self.socket:send(data)
+			if err == "closed" then self.disconnect("send message", err)
+			elseif err == "timeout" then self.cache = data
+			else self.cache = nil; self.retries = 0 end
+		end
 	end}
 	setmetatable(self.send, self.send)
 	
 	self.receive = function()
 		if not self.isConnected then return end
+		
+		for i = 1, self.maxUDPPackets do
+			local data, err = self.udpsocket:receive()
+			if data then self.buffer = data .. self.buffer end
+		end
 
 		local full, err, part = self.socket:receive '*a'
 		local data = full and full or part
 		if not data then return self.disconnect("receive message", err) end
 		self.buffer = self.buffer .. data
-		
-		if self.buffer == "\33" or self.buffer == "\234" then self.buffer = "" end
-		if self.buffer:byte(1) == 136 then
-			self.disconnect("CONNECTION CLOSE!!!")	
-		elseif self.buffer:byte(1) == 137 then
-			self.disconnect("PING!!!")	
-		elseif self.buffer:byte(1) == 138 then
-			self.disconnect("PONG!!!")	
-		end		
 
 		if self.debug and #self.buffer > 0 then
 			print("[buffer]", self.buffer:byte(1, -1))
@@ -212,7 +238,7 @@ function nonhub.new(options)
 			
 			if byte1 <= self.maxModeIndex then -- normal message
 				local mode = self.modeNames[byte1]
-				local hasID = self.modeLevels[byte1] == 2
+				local hasID = self.modeLevels[byte1] >= 2
 				local endPos = 3 + byte2 * 256 + byte3 + (hasID and 4 or 0)
 				if #self.buffer < endPos then break end
 				
@@ -231,9 +257,9 @@ function nonhub.new(options)
 				local err, num = self.modeErrors[mode][byte3], byte3
 				if self.debug then print("[error]", mode, err, num) end
 				if self.onError[mode] then self.onError(err, num) end
-			elseif self.debug then -- pong message
+			else -- pong message
 				self.buffer = self.buffer:sub(4)
-				print "[pong]"
+				if self.debug then print "[pong]" end
 			end
 		end
 

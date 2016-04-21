@@ -1,5 +1,5 @@
 /*
- * Nonhub server core v1.0.0
+ * Nonhub server core v1.1.0
  * Author: Nikolay Yevstakhov aka N1cke
  * License: MIT
  */
@@ -22,24 +22,32 @@ modeLevels: server => {
     var modes = server.modes
     var index = server.modeIndexes
     var levels = {}
-    for (var name in index) levels[index[name]] = modes[name].level
+    for (var name in index) {
+        var level = modes[name].level
+        if (server.UDP === true && level === 2) level = 3
+        if (server.UDP === false && level === 3) level = 2
+        levels[index[name]] = level
+    }
     return levels        
 },
 // can be adjusted in cfg.json (strictly for server use)
 modePaths: ["./node_modules/nonhub/modes/", "./modes/"],
 clientCfgPath: "./cfg.lua",
+UDP: null,
 internalPort: 80,
 port: server => process.env.PORT || server.internalPort,
 maxConnections: 10000,
-serverHandshake: "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n\r\n",
+serverHandshake: "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n",
 // can be redefined only via core addon
 startDate: () => 0,
 network: () => null,
+udpnetwork: () => null,
 clients: () => ({}),
+udpClients: () => ({}),
 ids: () => ({}),
 errorMessage: () => new Buffer([255, 0, 0]),
 pongMessage: () => new Buffer([255, 255, 255]),
-handshakeError: server => server.serverHandshake.trim() + "\r\nProtocol: Error\r\n\r\n",
+handshakeError: server => server.serverHandshake + "Protocol: Error\r\n\r\n",
 modeHandlers: server => {
     if (typeof server.modeIndexes === "function") return undefined
     var modes = server.modes
@@ -88,6 +96,24 @@ clientBuilder: server => {
     delete modes.core
     return builders
 },
+onUDPListen: server => function() {
+    server.udpnetwork.setBroadcast(true)
+    var address = server.udpnetwork.address();
+    console.log("Nonhub UDP started on "+address.address+":"+address.port)
+},
+onUDPMessage: server => function(data, socket) {
+    var udp = socket.address+":"+socket.port
+    var client = server.udpClients[udp]
+    if (client) return server.onMessage(client, data)
+    var tcp = data.toString()
+    var udpClient = server.clients[tcp]
+    if (udpClient && !udpClient.udpport) {
+        udpClient.udpport = socket.port
+        udpClient.udpaddress = socket.address
+        server.udpClients[udp] = udpClient
+        if (server.debug) console.log(tcp+" connected to UDP on "+socket.port)
+    }
+},
 onListen: server => function() {
     server.network.maxConnections = server.maxConnections
     server.startDate = Date.now()
@@ -109,8 +135,8 @@ onConnection: server => function(socket) {
             socket.setNoDelay(true)
             socket.removeListener('data', onHandshake)
             socket.on('data', data => server.onMessage(client, data))
-            socket.write(server.serverHandshake)
-            server.debug ? console.log(ip+" connected at "+ new Date()) : null
+            socket.write(server.serverHandshake + "UDPKey: " + ip  + "\n\n")
+            if (server.debug) console.log(ip+" connected at "+ new Date())
         } else {
             socket.write(server.handshakeError)
             server.destroySocket(socket, "version mismatch")
@@ -153,11 +179,15 @@ onMessage: server => function(client, data) {
                 if (error === undefined) { // normal message
                     client.buf[0] = client.mode // mode
                     client.buf.writeUInt16BE(client.bufLen-3, 1) // length
-                    if (server.modeLevels[client.mode] === 2) { // broadcast
+                    if (server.modeLevels[client.mode] >= 2) { // tcp broadcast
                         client.buf.writeUInt32BE(client.id, client.bufLen) // id
                         var msg = client.buf.slice(0, client.bufLen + 4)
                         var group = client.group
-                        for (var i in group) group[i].socket.write(msg)
+                        if (server.modeLevels[client.mode] === 3) {
+                            for (var i in group) if (group[i].udpport) {
+                                server.udpnetwork.send(msg, group[i].udpport,
+                                    group[i].udpaddress)}
+                        } else for (var i in group) group[i].socket.write(msg)
                         client.group = null
                     } else client.socket.write(client.buf.slice(0, client.bufLen))
                 } else { // error message
@@ -174,14 +204,16 @@ onMessage: server => function(client, data) {
     }
 },
 destroySocket: server => function(socket, error) {
-    var ip = socket.remoteAddress + ':' + socket.remotePort
-    var client = server.clients[ip]
+    var tcp = socket.remoteAddress + ':' + socket.remotePort
+    var client = server.clients[tcp]
     if (client) {
         for (var finalizer of server.modeFinalizers) finalizer(client, server)
-        delete server.clients[ip]
+        var udp = socket.remoteAddress + ':' + server.clients[tcp].udpport
+        delete server.clients[tcp]
+        delete server.udpClients[udp]
     }
     socket.destroy()
-    server.debug ? console.log(ip + " disconnected at " + new Date() +
+    server.debug ? console.log(tcp + " disconnected at " + new Date() +
         " due to " + error) : null
 }
 
@@ -204,6 +236,7 @@ port: 80,
 timeout: 5,
 interval: 5,
 maxRetries: 5,
+maxUDPPackets: 60,
 clientHandshake: "GET /%s HTTP/1.1\\r\\n" + "Host: %s\\r\\n" +
     "Upgrade: websocket\\r\\n" + "Connection: Upgrade\\r\\n\\r\\n",
 onConnect: `'function(clientHS, serverHS) end'`,
@@ -258,12 +291,16 @@ socket: () => null,
 buffer: () => null,
 cache: () => null,
 retries: () => null,
+udpsocket: () => null,
+
 }
 
 exports.client = {
 
 buf: server => new Buffer(server.maxMessageLength + 7),
 socket: null,
+udpport: null,
+udpaddress: null,
 id: 0,
 group: null,
 bufLen: 0,
