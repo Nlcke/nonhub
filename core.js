@@ -126,7 +126,7 @@ onConnection: server => function(socket) {
         if (data.toString().includes(server.version, 5)) {
             var ip = socket.remoteAddress + ':' + socket.remotePort
             if (server.clients[ip])
-                return server.destroySocket(socket, 'Error: same address')
+                return server.destroySocket(socket, 'same address')
             server.clients[ip] = Object.create(server.client)
             var client = server.clients[ip]
             client.socket = socket
@@ -135,7 +135,7 @@ onConnection: server => function(socket) {
             socket.setNoDelay(true)
             socket.removeListener('data', onHandshake)
             socket.on('data', data => server.onMessage(client, data))
-            socket.write(server.serverHandshake + "UDPKey: " + ip  + "\n\n")
+            socket.write(server.serverHandshake + "UDPKey: " + ip  + "\r\n\r\n")
             if (server.debug) console.log(ip+" connected at "+ new Date())
         } else {
             socket.write(server.handshakeError)
