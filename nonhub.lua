@@ -193,7 +193,7 @@ function nonhub.new(options)
 		if not self.isConnected then return end
 
 		local encodedMode = string.char(self.modeIndexes[mode])
-		local encodedMessage = self.modePackers[mode](message)
+		local encodedMessage = self.modePackers[mode](message, self)
 		local l = #encodedMessage
 		
 		if self.debug then
@@ -245,7 +245,7 @@ function nonhub.new(options)
 				local b1, b2, b3, b4 = self.buffer:byte(endPos - 3, endPos)
 				local id = hasID and b1*16777216+b2*65536+b3*256+b4 or nil
 				local data = self.buffer:sub(4, id and endPos - 4 or endPos)
-				local message = self.modeUnpackers[mode](data)
+				local message = self.modeUnpackers[mode](data, self)
 				self.buffer = self.buffer:sub(endPos + 1)
 				if self.debug then
 					print("[receive] ", mode, ":", message, "[", id, "]")
