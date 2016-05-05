@@ -256,7 +256,7 @@ function nonhub.new(options)
 				local mode = self.modeNames[byte2]
 				local err, num = self.modeErrors[mode][byte3], byte3
 				if self.debug then print("[error]", mode, err, num) end
-				if self.onError[mode] then self.onError(err, num) end
+				if self.onError[mode] then self.onError[mode](err, num) end
 			else -- pong message
 				self.buffer = self.buffer:sub(4)
 				if self.debug then print "[pong]" end
