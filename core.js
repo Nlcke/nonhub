@@ -163,8 +163,9 @@ onMessage: server => function(client, data) {
             client.msgRem += data[pos]
             if (client.msgRem > server.maxMessageLength) 
                 return server.destroySocket(client.socket, 'Error: length')
-            ++client.bufLen; ++pos; --rem; break
+            ++client.bufLen; ++pos; if (--rem === 0) rem = 0.5; break
         default:
+            if (rem < 1) rem = 0
             if (rem >= client.msgRem) { // full message
                 if (server.modeLevels[client.mode] > 0 && client.id === 0) {
                     server.errorMessage[1] = client.mode
